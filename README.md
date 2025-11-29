@@ -11,17 +11,17 @@
 
 > 1. 源仓库地址：[https://github.com/langchain-ai/chat-langchain](https://github.com/langchain-ai/chat-langchain)
 > 2. 可本地运行分支（有版本兼容性问题，需要更改，可直接使用本人调试过的代码，也可根据视频中一步一步的解决）：[https://github.com/langchain-ai/chat-langchain/tree/langserve](https://github.com/langchain-ai/chat-langchain/tree/langserve)
-> 3. 🔥 本人已经更改**调试能运行**的仓库代码🔥(**本项目**)：[https://github.com/lichuachua/chat-langchain-study](https://github.com/lichuachua/chat-langchain-study)
+> 3. 🔥 本人已经更改**调试能运行**的仓库代码🔥(**本项目**)：[https://github.com/limouren2000/chat-langchain-study](https://github.com/limouren2000/chat-langchain-study)
 >
 
 本文一共三部分：
 
-1. 第一部分是项目的运行效果，直接运行上面 “[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/lichuachua/chat-langchain-study)”即可得到运行效果。建议先看一遍，知道这个项目实现起来是什么样子。
+1. 第一部分是项目的运行效果，直接运行上面 “[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/limouren2000/chat-langchain-study)”即可得到运行效果。建议先看一遍，知道这个项目实现起来是什么样子。
 2. 第二部分是申请项目启动需要的API，主要是项目启动需要的环境变量。不涉及代码，只是申请运行项目需要的Key。
-3. 第三部分是如何从源仓库地址拉取项目源码进行更改（当然，这部分可以直接看我改过的代码“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/lichuachua/chat-langchain-study)”），之后导入第二部分得到的API，开始运行，运行起来的项目效果同第一部分。
+3. 第三部分是如何从源仓库地址拉取项目源码进行更改（当然，这部分可以直接看我改过的代码“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/limouren2000/chat-langchain-study)”），之后导入第二部分得到的API，开始运行，运行起来的项目效果同第一部分。
 
 # 运行效果
-直接运行“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/lichuachua/chat-langchain-study)”，运行效果如视频所示：
+直接运行“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/limouren2000/chat-langchain-study)”，运行效果如视频所示：
 
 **<font style="color:#D22D8D;">视频：</font>**
 
@@ -70,10 +70,10 @@ API平台（先注册，再申请）：
 上述“项目运行成功视频”中<font style="color:#DF2A3F;">第一步的项目拉取换成拉取更改后的代码就好</font>，<font style="color:#DF2A3F;">视频</font>中**<font style="color:#DF2A3F;">涉及到代码的变更完全不需要改</font>**跟着**<font style="color:#DF2A3F;">看运行流程</font>**就好，具体执行如下：
 
 ### 克隆代码
-克隆“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/lichuachua/chat-langchain-study)”执行：
+克隆“[3. 🔥 本人已经更改**调试能运行**的仓库代码🔥](https://github.com/limouren2000/chat-langchain-study)”执行：
 
 ```plain
-git clone https://github.com/lichuachua/chat-langchain-study
+git clone https://github.com/limouren2000/chat-langchain-study
 ```
 
 ### <font style="color:rgb(31, 35, 40);">安装后端依赖</font>
