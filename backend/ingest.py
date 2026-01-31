@@ -14,13 +14,16 @@ from langchain.utils.html import PREFIXES_TO_IGNORE_REGEX, SUFFIXES_TO_IGNORE_RE
 from langchain_community.vectorstores import Weaviate
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
-
+from langchain.embeddings import HuggingFaceEmbeddings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def get_embeddings_model() -> Embeddings:
-    return OpenAIEmbeddings(model="text-embedding-3-small", chunk_size=200)
+    # return OpenAIEmbeddings(model="text-embedding-3-small", chunk_size=200)
+    return HuggingFaceEmbeddings(
+    model_name="sentence-transformers/all-MiniLM-L6-v2"
+)
 
 
 def metadata_extractor(meta: dict, soup: BeautifulSoup) -> dict:
@@ -157,7 +160,6 @@ def ingest_docs():
     logger.info(
         f"LangChain now has this many vectors: {num_vecs}",
     )
-
 
 if __name__ == "__main__":
     ingest_docs()

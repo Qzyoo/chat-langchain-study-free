@@ -10,8 +10,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
 from langsmith import Client
 from pydantic import BaseModel
-
+from dotenv import load_dotenv
 client = Client()
+import os
+from pathlib import Path
+
+# 加载环境变量（支持 Windows 路径）
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path, override=True)
+
+# 调试：确认加载成功（启动后会在控制台打印）
+print(f"✅ WEAVIATE_URL: {os.getenv('WEAVIATE_URL', 'NOT LOADED!')}")
 
 app = FastAPI()
 app.add_middleware(

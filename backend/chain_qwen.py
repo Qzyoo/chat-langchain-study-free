@@ -7,8 +7,6 @@ from constants import WEAVIATE_DOCS_INDEX_NAME
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ingest import get_embeddings_model
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatCohere
 from langchain_community.vectorstores import Weaviate
 from langchain_core.documents import Document
 from langchain_core.language_models import LanguageModelLike
@@ -22,25 +20,34 @@ from langchain_core.prompts import (
 from langchain_core.pydantic_v1 import BaseModel
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.runnables import (
-    ConfigurableField,
     Runnable,
     RunnableBranch,
     RunnableLambda,
     RunnablePassthrough,
-    RunnableSequence,
-    chain,
 )
-from langchain_fireworks import ChatFireworks
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI  # 使用 OpenAI 客户端兼容魔塔/通义
 from langsmith import Client
 from dotenv import load_dotenv
-load_dotenv()  # 确保导入时立即加载环境变量
 
-import os
-# 第 120 行原来的代码
+# 加载环境变量
+load_dotenv()
+
+# --- 配置 ---
+# 请确保环境变量中有 MODELSCOPE_API_KEY (魔塔/通义的Key)
+# WEAVIATE_URL 和 WEAVIATE_API_KEY 也必须存在
 WEAVIATE_URL = os.environ["WEAVIATE_URL"]
+WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
+MODELSCOPE_API_KEY = os.environ.get("MODELSCOPE_API_KEY")
+
+if not MODELSCOPE_API_KEY:
+    raise ValueError("请在 .env 文件中配置 MODELSCOPE_API_KEY")
+
+# --- 提示词模板 (Prompt) ---
+# 这里保留了原版的英文提示词，如果你希望它用中文回答，建议把 "Generate... in English" 改为 "用中文回答"
 RESPONSE_TEMPLATE = """\
+You are an expert programmer and problem-solver, tasked with answering any question \
+about Langchain.
+
 Generate a comprehensive and informative answer of 80 words or less for the \
 given question based solely on the provided search results (URL and content). You must \
 only use information from the provided search results. Use an unbiased and \
@@ -57,7 +64,7 @@ rather than putting them all at the end.
 If there is nothing in the context relevant to the question at hand, just say "Hmm, \
 I'm not sure." Don't try to make up an answer.
 
-Anything between the following `context`  html blocks is retrieved from a knowledge \
+Anything between the following `context` html blocks is retrieved from a knowledge \
 bank, not part of the conversation with the user. 
 
 <context>
@@ -65,32 +72,7 @@ bank, not part of the conversation with the user.
 <context/>
 
 REMEMBER: If there is no relevant information within the context, just say "Hmm, I'm \
-not sure." Don't try to make up an answer. Anything between the preceding 'context' \
-html blocks is retrieved from a knowledge bank, not part of the conversation with the \
-user.\
-"""
-
-COHERE_RESPONSE_TEMPLATE = """\
-Generate a comprehensive and informative answer of 80 words or less for the \
-given question based solely on the provided search results (URL and content). You must \
-only use information from the provided search results. Use an unbiased and \
-journalistic tone. Combine search results together into a coherent answer. Do not \
-repeat text. Cite search results using [${{number}}] notation. Only cite the most \
-relevant results that answer the question accurately. Place these citations at the end \
-of the sentence or paragraph that reference them - do not put them all at the end. If \
-different results refer to different entities within the same name, write separate \
-answers for each entity.
-
-You should use bullet points in your answer for readability. Put citations where they apply
-rather than putting them all at the end.
-
-If there is nothing in the context relevant to the question at hand, just say "Hmm, \
-I'm not sure." Don't try to make up an answer.
-
-REMEMBER: If there is no relevant information within the context, just say "Hmm, I'm \
-not sure." Don't try to make up an answer. Anything between the preceding 'context' \
-html blocks is retrieved from a knowledge bank, not part of the conversation with the \
-user.\
+not sure." Don't try to make up an answer.
 """
 
 REPHRASE_TEMPLATE = """\
@@ -116,41 +98,45 @@ app.add_middleware(
 )
 
 
-WEAVIATE_URL = os.environ["WEAVIATE_URL"]
-WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
-
-
 class ChatRequest(BaseModel):
     question: str
     chat_history: Optional[List[Dict[str, str]]]
 
 
+# --- 核心修改 1: 获取检索器 ---
 def get_retriever() -> BaseRetriever:
-    weaviate_client = weaviate.Client(
+    # 建立 Weaviate 客户端
+    client = weaviate.Client(
         url=WEAVIATE_URL,
         auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
     )
-    weaviate_client = Weaviate(
-        client=weaviate_client,
+    # 初始化向量库
+    vectorstore = Weaviate(
+        client=client,
         index_name=WEAVIATE_DOCS_INDEX_NAME,
         text_key="text",
-        embedding=get_embeddings_model(),
+        embedding=get_embeddings_model(), # 注意：这里要确保 ingest.py 里的 embedding 模型和你现在能用的匹配
         by_text=False,
         attributes=["source", "title"],
     )
-    return weaviate_client.as_retriever(search_kwargs=dict(k=6))
+    return vectorstore.as_retriever(search_kwargs=dict(k=6))
 
 
+# --- 核心修改 2: 链的构建 ---
 def create_retriever_chain(
     llm: LanguageModelLike, retriever: BaseRetriever
 ) -> Runnable:
     CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(REPHRASE_TEMPLATE)
+    
+    # 使用 LLM 重新改写问题（处理多轮对话）
     condense_question_chain = (
         CONDENSE_QUESTION_PROMPT | llm | StrOutputParser()
     ).with_config(
         run_name="CondenseQuestion",
     )
+    
     conversation_chain = condense_question_chain | retriever
+    
     return RunnableBranch(
         (
             RunnableLambda(lambda x: bool(x.get("chat_history"))).with_config(
@@ -176,7 +162,7 @@ def format_docs(docs: Sequence[Document]) -> str:
 
 
 def serialize_history(request: ChatRequest):
-    chat_history = request["chat_history"] or []
+    chat_history = request.chat_history or []
     converted_chat_history = []
     for message in chat_history:
         if message.get("human") is not None:
@@ -191,11 +177,13 @@ def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
         llm,
         retriever,
     ).with_config(run_name="FindDocs")
+    
     context = (
         RunnablePassthrough.assign(docs=retriever_chain)
         .assign(context=lambda x: format_docs(x["docs"]))
         .with_config(run_name="RetrieveDocs")
     )
+    
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", RESPONSE_TEMPLATE),
@@ -203,84 +191,41 @@ def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
             ("human", "{question}"),
         ]
     )
-    default_response_synthesizer = prompt | llm
-
-    cohere_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", COHERE_RESPONSE_TEMPLATE),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-        ]
+    
+    response_synthesizer = (prompt | llm | StrOutputParser()).with_config(
+        run_name="GenerateResponse"
     )
-
-    @chain
-    def cohere_response_synthesizer(input: dict) -> RunnableSequence:
-        return cohere_prompt | llm.bind(source_documents=input["docs"])
-
-    response_synthesizer = (
-        default_response_synthesizer.configurable_alternatives(
-            ConfigurableField("llm"),
-            default_key="openai_gpt_3_5_turbo",
-            anthropic_claude_3_haiku=default_response_synthesizer,
-            fireworks_mixtral=default_response_synthesizer,
-            google_gemini_pro=default_response_synthesizer,
-            cohere_command=cohere_response_synthesizer,
-            modelscope_qwen=default_response_synthesizer,
-        )
-        | StrOutputParser()
-    ).with_config(run_name="GenerateResponse")
+    
     return (
         RunnablePassthrough.assign(chat_history=serialize_history)
         | context
         | response_synthesizer
     )
 
-modelscope_qwen = ChatOpenAI(
-    model="Qwen/Qwen3-8B",  # Qwen/Qwen3-8B 可选：qwen-max（最强）、qwen-plus（均衡）、qwen-long（长文本）
+# --- 核心修改 3: 初始化魔塔/通义 LLM ---
+# 使用 OpenAI 兼容模式连接 DashScope
+# model 可以选 "qwen-turbo" (通常免费/便宜), "qwen-plus", "qwen-max"
+modelscope_llm = ChatOpenAI(
+    model="qwen-turbo", 
+    openai_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    openai_api_key=MODELSCOPE_API_KEY,
     temperature=0,
-    openai_api_key=os.environ.get("MODELSCOPE_API_KEY", "not_provided"),
-    openai_api_base="https://api-inference.modelscope.cn/v1",
-    streaming=True,
+    streaming=True
 )
-gpt_3_5 = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
-claude_3_haiku = ChatAnthropic(
-    model="claude-3-haiku-20240307",
-    temperature=0,
-    max_tokens=4096,
-    anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
-)
-fireworks_mixtral = ChatFireworks(
-    model="accounts/fireworks/models/mixtral-8x7b-instruct",
-    temperature=0,
-    max_tokens=16384,
-    fireworks_api_key=os.environ.get("FIREWORKS_API_KEY", "not_provided"),
-)
-gemini_pro = ChatGoogleGenerativeAI(
-    model="gemini-pro",
-    temperature=0,
-    max_tokens=16384,
-    convert_system_message_to_human=True,
-    google_api_key=os.environ.get("GOOGLE_API_KEY", "not_provided"),
-)
-cohere_command = ChatCohere(
-    model="command",
-    temperature=0,
-    cohere_api_key=os.environ.get("COHERE_API_KEY", "not_provided"),
-)
-llm = gpt_3_5.configurable_alternatives(
-    # This gives this field an id
-    # When configuring the end runnable, we can then use this id to configure this field
-    ConfigurableField(id="llm"),
-    default_key="openai_gpt_3_5_turbo",
-    anthropic_claude_3_haiku=claude_3_haiku,
-    fireworks_mixtral=fireworks_mixtral,
-    google_gemini_pro=gemini_pro,
-    modelscope_qwen=modelscope_qwen,
-    cohere_command=cohere_command,
-).with_fallbacks(
-    [gpt_3_5, claude_3_haiku, fireworks_mixtral, gemini_pro, cohere_command, modelscope_qwen]
-)
-# 临时添加这行用于调试
-print("可用的 LLM alternatives:", llm.configurable_alternatives)
+
+# 初始化检索器
 retriever = get_retriever()
-answer_chain = create_chain(llm, retriever)
+
+# 构建最终的链
+answer_chain = create_chain(modelscope_llm, retriever)
+
+# FastAPI 路由
+@app.post("/chat")
+async def chat_endpoint(request: ChatRequest):
+    # 将 Pydantic model 转为 dict 传给 chain
+    input_dict = {"question": request.question, "chat_history": request.chat_history}
+    return await answer_chain.ainvoke(input_dict)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
